@@ -1,0 +1,5 @@
+#!/bin/sh
+
+/etc/init.d/dhcpd.sh stop 
+/etc/init.d/dhcpd.sh start
+kill -HUP `ps xa | grep "[f]wregd.pl" | awk '{print $1}'` > /dev/null 2>&1

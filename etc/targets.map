@@ -1,0 +1,21 @@
+# $Id: targets.map,v 1.1 2002/01/06 21:39:07 racon Exp $
+# 
+# this file defines which targets should be enabled for a host with the
+# given MAC address when it is going online and got an IP address from the
+# DHCP server
+
+# MAC address           whitespaces separated list of targets
+# pffa-server
+00:01:02:07:42:42       DEFAULT_CLIENT WINDOWS_SERVER
+# bibel
+00:80:ad:05:20:f9       DEFAULT_CLIENT SERVER_SSH SERVER_FTP SERVER_FTP-DATA
+# hannelore
+00:04:76:23:04:bd       DEFAULT_CLIENT SERVER_SSH SERVER_FTP SERVER_FTP-DATA SERVER_WWW IPV6_TUNNEL
+# bigfoot
+00:20:af:e5:5d:95       DEFAULT_CLIENT WINDOWS_SERVER SERVER_FTP SERVER_FTP-DATA SERVER_WWW SERVER_HTTPS SERVER_WEBCACHE
+# minix
+00:00:b4:45:36:ca       DEFAULT_CLIENT SERVER_FTP SERVER_FTP-DATA SERVER_TELNET SERVER_WWW
+# tux
+00:a0:cc:5a:c4:c3       DEFAULT_CLIENT SERVER_SSH SERVER_FTP SERVER_FTP-DATA SERVER_WWW WINDOWS_SERVER SERVER_HTTPS MSC_PROXY
+# obis-nb special wishes
+00:e0:98:8b:88:21       DEFAULT_CLIENT DIRECT_CONNECT_CLIENT

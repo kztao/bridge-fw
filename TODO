@@ -1,0 +1,9 @@
+$Id: TODO,v 1.1 2002/01/07 20:28:11 racon Exp $
+
+bridge-fw 1.0-alpha1:
+
+- support shutdown of firewall to original state
+- support the reload of configuration file and restart of fwregd.pl
+- correct shutdown of fwregd.pl, all hosts should be offline after
+  that
+- create a function to normalize mac adresses to format XX:XX:XX:XX:XX:XX        

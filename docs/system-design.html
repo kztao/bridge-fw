@@ -1,0 +1,524 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><title>A DHCP controlled Firewall System - Version 1</title><meta name="description" content="&#10;   This specification of the dhcp-fw system describes which functionality&#10;   is provided by the different components of the system and how does these&#10;   components work together. There is also a short description of how the&#10;   system can be configured.&#10;  "><meta name="keywords" content="&#10;   firewall dhcp-fw dhcp fw control authorisation host&#10;   client security network&#10;  "><meta name="author" content="Oliver Baltzer (ob@racon.net)"><meta name="date" content="2002-03-06"></head><body bgcolor="#ffffff"><div style="margin-left: 5%; width: 90%;"><center><h1>A DHCP controlled Firewall System - Version 1</h1><p>
+      by Oliver Baltzer 
+       &lt;<a href="mailto:ob@racon.net">ob@racon.net</a>&gt;
+     </p></center>
+  <h2>Table of Content</h2><p style="margin: 0pt; margin-left: 10pt"><a href="#sec1"><strong>1 Introduction</strong></a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec2"><strong>2 Keeping the Structure</strong></a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec3"><strong>3 Authenticate a User</strong></a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec4"><strong>4 System Requirements</strong></a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec5"><strong>5 Setup the System</strong></a></p><p style="margin: 0pt; margin-left: 20pt"><a href="#sec5.1"><strong>5.1 Preparing the Linux Kernel and the System Tools</strong></a></p><p style="margin: 0pt; margin-left: 20pt"><a href="#sec5.2"><strong>5.2 Installing the additional Software</strong></a></p><p style="margin: 0pt; margin-left: 30pt;"><a href="#sec5.2.1">5.2.1 Setup the Firewall</a></p><p style="margin: 0pt; margin-left: 30pt;"><a href="#sec5.2.2">5.2.2 Setup the Firewall Registration Daemon</a></p><p style="margin: 0pt; margin-left: 30pt;"><a href="#sec5.2.3">5.2.3 Configuration File</a></p><p style="margin: 0pt; margin-left: 30pt;"><a href="#sec5.2.4">5.2.4 Initialize the System on Bootup</a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec6"><strong>6 Known Bugs</strong></a></p><p style="margin: 0pt; margin-left: 10pt"><a href="#sec7"><strong>7 Things To Do</strong></a></p> 
+  
+  
+  
+  <a name="sec1"></a><h2>1 Introduction</h2> 
+   <p style="text-indent: 10pt; text-align: justify;">
+    Since the beginnings of computer networking it was never possible to
+    think about it without thinking about security issues. During the last
+    years the traditional security techniques became more and more
+    insecure and were not able to sustain the growing criminal potential
+    in the  Internet anymore. One new attempt to reduce criminal activity
+    on or to the network and to keep track of them are Firewalls in the
+    general meaning of a configuration element which is able to control
+    and to record network activities. The most common use of a Firewall is
+    this as a packet filter which allows or blocks data packages according
+    to their origin, destination or application they address. These
+    decision-making points are usually known as rules. Most of the time
+    these rules are defined statically and they are usually used to
+    protect one or more private networks from one or more public networks.
+    Here you have at least one trusted network on one side of the firewall
+    which is a private network in that case. You assume that you have a
+    negligible criminal potential in this network and you only have to
+    care about any potential criminal  activity from the public network.
+    This approach works fine as long as you have full control about your
+    private network, but if you like to provide a semi-public network
+    access where everybody can access the physical network with her own
+    computer and the potential for criminal activities is relatively high
+    in that area, than you will need a solution which protects all
+    networks from each other. In such an environment it is also not
+    possible to use static rules anymore, because the network topology is
+    changing very often and is not under full control by you.
+   </p>
+   <p style="text-indent: 10pt; text-align: justify;">
+    The following work will introduce you to a Firewall system which is
+    flexible enough to adapt to the changing network topology dynamically
+    and also tries to keep control of the accesses to the network.
+   </p>
+   <p style="text-indent: 10pt; text-align: justify;">
+    The system was developed within the scope of a course in System
+    Administration at the  
+    <a href="http://www.f1.fhtw-berlin.de/">Fachhochschule für
+    Technik und Wirtschaft</a> in Berlin/Germany. 
+    The environment it is intended to use in is a computer lab
+    administrated by students where it is possible to attach one's own
+    laptop to the network of the university to access the campus network
+    and the Internet. The picture shows the structure of the network in
+    this lab.
+    <p style="text-align: center;"><code>[Image: before.png]</code></p>
+    The problem in that environment is, that the
+    students who maintaining the computer lab, are not always available to
+    control who is attaching her laptop to the network and what she is
+    doing. On the other hand the people using these facilities are also
+    students with strong knowledge of networking systems and how to
+    corrupt them for their own use.  Accordingly the goal of the system is
+    to control the access to the network and make it difficult for the
+    user to abuse it for illegal use.
+   </p>
+  
+
+  
+
+  <a name="sec2"></a><h2>2 Keeping the Structure</h2>
+   <p style="text-indent: 10pt; text-align: justify;">
+    The main issue while developing the system was that it should fit into
+    a network without changing anything on the existing structure. The
+    goal was to keep all network equipment and IP addresses as they are
+    and the view on the network from the point of other networks should
+    also stay the same. There are a few possibilities to realize this
+    approach partly. The obvious one is Network Address Translation (NAT)
+    where all local host addresses are mapped to their corresponding ones
+    used in the external network. Usually Network Address Translation is
+    handled by a router combined with a Firewall. The problem here is,
+    that all machines in the local network have to be reconfigured with a
+    new host address and that changes the structure of the network and its
+    internal view. The next possibility is to use a private network
+    between the Firewall and the main router for the network. But that
+    means that the router have to be reconfigured which is not included in
+    our administration domain. Finally the best choice for that case is
+    to use an Ethernet bridge combined with the functionality of a
+    Firewall. One of the biggest advantages of the Ethernet bridge is that
+    it can operate completely transparent for the overlaying network
+    protocols, for example the Internet Protocol (IP). It will just
+    separates two Ethernet segments from each other without touching the
+    protocol information in layers above the Ethernet layer. So you can
+    use the same network addresses on both sides of the Ethernet bridge
+    and the bridge is not visible for any network protocols above the
+    Ethernet protocol. The following picture shows the network configuration after
+    adding the bridge to the network.
+    <p style="text-align: center;"><code>[Image: after.png]</code></p>
+   </p>
+  
+  
+  
+  
+  <a name="sec3"></a><h2>3 Authenticate a User</h2>
+   <p style="text-indent: 10pt; text-align: justify;">
+    To have full control on who is accessing the network, it is
+    necessary to authenticate each single user who wants to access the
+    network with her own machine. The machine of a user can be identified
+    by its unique Ethernet MAC address. Now, to get access to the network with
+    one's own machine the user has to register the MAC address of that
+    machine. Only registered machines will get a host (IP) address in the
+    network and will be not blocked by the firewall. 
+    The IP address of a known machine will be served by a DHCP server.
+    The DHCP server keeps track of all handed out IP addresses (leases)
+    in a file (lease file). This file is observed by a Firewall
+    Registration Daemon which adjusts the Firewall rules according to the
+    content of the lease file. Sometimes one user hase more privileges in a
+    network than another one, or sometimes one machine is allowed to
+    provide a service and the others not. Here you need a distinction
+    between the privileges of each machine and default privileges if one
+    machine does not get special privileges.
+   </p>
+  
+
+  
+  
+  <a name="sec4"></a><h2>4 System Requirements</h2>
+   <p style="text-indent: 10pt; text-align: justify;">
+    Bridges are widely used and as multiport bridges commonly known as
+    (Ethernet-) switches, but most of them do not support packet filtering
+    or even can operate on higher protocol layers than the network protocol
+    layer. There are only a few commercial products available which can do packet
+    filtering in bridging mode, but these are very expensive and not
+    flexible enough to fulfil our needs. Another way is to build an own
+    system using standard PC components. For a 100Mbps Ethernet network
+    (100Base-T) you will need at least a 300 MHz CPU system and two network
+    cards. Assuming that the system should run uninterrupted you should make
+    sure that all components are working together without exceptions and
+    fit together perfectly. You should also make sure that moving parts are
+    of high quality to prevent a failure and all components should be supported
+    by the software you want to use. For example, some network cards do not
+    work correctly with Linux and they just stop working after a certain
+    amount of time.
+   </p>
+   <p style="text-indent: 10pt; text-align: justify;">
+    The system must provide
+    Ethernet-bridging, packet filtering and must be flexible enough for
+    own extensions. Because of bridging together with packet filtering is not a
+    commonly used technique, not a lot operating systems support it. Two
+    systems from the open source section which can do that are Linux and FreeBSD. 
+    The system described in this document is based on Linux but it should
+    work similary on FreeBSD.
+   </p>
+   
+  
+  
+
+  <a name="sec5"></a><h2>5 Setup the System</h2>
+   <p style="text-indent: 10pt; text-align: justify;">
+    First of all there is to say that going through the installation
+    process of the system it not trivial. You should bring some experiences
+    in configuring and compiling a Linux kernel with you and you should
+    also know how to apply patches to software source code. 
+   </p>
+   
+   
+   
+   <a name="sec5.1"></a><h3>5.1 Preparing the Linux Kernel and the System Tools</h3>
+    <p style="text-indent: 10pt; text-align: justify;">
+     Originally the Linux kernel
+     supports bridging of network interfaces, but does not support packet
+     filtering on these at the same time. So it is necessary to apply a
+     patch to the kernel which enables packet filtering on a bridge device.
+     The patch for the latest kernel version can be obtained from 
+     <a href="http://bridge.sf.net/">http://bridge.sf.net/</a>. To
+     install hte patch you have to change into the root directory of the
+     kernel source tree. Usually this is <code>/usr/src/linux</code>. Here
+     you need to call:
+     <div style="margin-bottom: 10pt; background-color: #ffffbb; padding: 5pt; border: 1px; border-style: solid;"><pre style="margin: 0pt;"># patch -p1 &lt; /path/to/bridge-nf-x.x.x-against-y.y.y.diff</pre></div>
+     where <code>x.x.x</code> is the version number of the Bridge-Netfilter
+     patch and <code>y.y.y</code> is the version of the kernel you want to
+     apply the patch to.
+    </p>
+    <p style="text-indent: 10pt; text-align: justify;">
+     If you have applied the bridge-nf patch to the kernel you need to add
+     another patch to the kernel source before you can configure and
+     compile it. This patch will enable the matching of MAC destination
+     addresses in the Netfilter code of the kernel. The default Linux
+     kernel only supports the matching of MAC source addresses, but the
+     Firewall Registration Daemon uses the MAC addresses of the local
+     hosts to determine whether or not a network package can pass the
+     Firewall and that is why the matching must be bidirectional. The patch
+     to enable the matching of MAC destination addresses can be found at 
+     <a href="http://www.racon.net/projects/bridge-fw/">http://www.racon.net/projects/bridge-fw/</a>. 
+     You should apply it to the Linux kernel source in the same way 
+     you did with the bridge-nf patch. In the root directory of the kernel
+     source tree just call:
+     <div style="margin-bottom: 10pt; background-color: #ffffbb; padding: 5pt; border: 1px; border-style: solid;"><pre style="margin: 0pt;"># patch -p1 &lt; /path/to/mac_dst_match-x.x.x-against-y.y.y.diff</pre></div>
+    </p>
+    <p style="text-indent: 10pt; text-align: justify;">
+     Now you should be able to configure your kernel, compile and install
+     it including all modules you have created. During the configuration
+     make sure you select "netfilter (firewalling) support" in the bridge
+     section of the configuration (hint: you have to enable netfilter
+     first) otherwise the Firewall will not work.
+    </p>
+    <p style="text-indent: 10pt; text-align: justify;">
+     To make use of the new features in the Netfilter code you also
+     need to patch the user interface to the Netfilter
+     <code>iptables</code>. You can get the latest source code distribution
+     of <code>iptables</code> from 
+     <a href="http://netfilter.samba.org/">http://netfilter.samba.org/</a>. 
+     The patch you need you can get from 
+     <a href="http://www.racon.net/projects/bridge-fw/">http://www.racon.net/projects/bridge-fw/</a>. 
+     To apply the patch you do the same thing as you did when
+     patching the kernel source. Change into the root directory of the
+     <code>iptables</code> source code distribution and call:
+     <div style="margin-bottom: 10pt; background-color: #ffffbb; padding: 5pt; border: 1px; border-style: solid;"><pre style="margin: 0pt;"># patch -p1 &lt; /path/to/iptables-z.z.z-mac_dst_match.diff</pre></div>
+     where <code>z.z.z</code> stands for the <code>iptables</code> version
+     number here. Now configure your <code>iptables</code> source code
+     properly and compile/install it. You should make sure it does not
+     conflict with another installed <code>iptables</code>.
+    </p>
+    <p style="text-indent: 10pt; text-align: justify;">
+     Other software which is needed by the system but can be installed from
+     precompiled software packages is:
+     
+      brutils - Utilities for Bridging
+      Perl Version &gt;= 5
+      Internet Software Cooperation DHCP Daemon Version &gt;= 3.0
+     
+    </p>
+   
+
+   
+
+   <a name="sec5.2"></a><h3>5.2 Installing the additional Software</h3>
+    <p style="text-indent: 10pt; text-align: justify;">
+     After the system configuration is completed the Firewall Registration
+     Daemon (FWREGD) can be installed. There is nothing which needs to be
+     compiled and you can just unpack the FWREGD distribution to a
+     directory of your choice. Usually you should put everything in
+     <code>/opt/fwregd/</code>. Once you have unpacked the distribution you
+     can devide the FWREGD software into two parts. One is the part which
+     initalizes the Firewall and changes the configuration of the Firewall
+     and the other one is observing the lease file of the DHCP server and
+     initiates the change of the Firewall by calling a couple of shell
+     scripts. The first part you can find underneath the directory
+     <code>firewall/</code> in the root of the distribution and the second
+     is available underneath <code>dhcp/</code>. Another important
+     directory is <code>etc/</code> in which the configuration files are
+     stored. There are also other
+     directories which are not really important right now, they just
+     contain patches or helper scripts to initalize system states or start
+     programs. For further refernces to path names or files which are
+     without a leading <code>/</code> (slash) you can assume that the path is
+     relative to the root directory of the FWREGD distribution.
+    </p>
+    
+    <a name="sec5.2.1"></a><h4>5.2.1 Setup the Firewall</h4>
+     <p style="text-indent: 10pt; text-align: justify;">
+      The concept how the Firewall Registration Deamon works is pretty
+      simple. All privileges, a single machine in the network can have,
+      will be combined to a set of privilege groups. These groups could be
+      for example a group for client services or a group which gives the
+      privilege to provide a Secure Shell (SSH) service. All Firewall rules
+      belonging to one group can be summarized to one chain in the
+      Firewall. To this chain can be pointed from everywhere else inside
+      the chain set of the Firewall. According to the examples there could
+      be chains defined called <code>CLIENT_SERVICES</code> and
+      <code>SSH_SERVER</code>. Network packages reaching the Firewall and
+      matching a certain criteria can be now redirected to one or more of
+      these chains. In all chains the first rule that is matching is
+      the exit point for the package and it will be processed (usually it
+      can pass the Firewall). If there could not be a matching rule found in
+      the chain of chains, then the default target is used which usually
+      drops or rejects the package and do not let it pass the Firewall. All
+      chains can be already created on startup of the system. The shell
+      scripts which will prepare the Firewall and add all the privilege
+      group chains to it are located in the directory
+      <code>firewall/scripts/</code>. Because of the scripts need to be
+      executed in the right order there is another directory
+      <code>firewall/init.d/</code>. In this directory symbolic links to the actually
+      scripts are located. This is something like the System V init style.
+      The style of the names of these links is
+      something like <code>script-XX-scriptname</code> where
+      <code>XX</code> is a
+      positive number which has a leading <code>0</code> if it is smaller
+      than 10. In the Firewall initialization script, which can be found in
+      <code>firewall/initFirewall.sh</code>, the links in
+      <code>firewall/init.d/</code> will be executed in
+      the order of the numbers in their names, starting with the lowest
+      one. In these scripts all static settings to the Firewall can be
+      made.
+     </p>
+     <p style="text-indent: 10pt; text-align: justify;">
+      In the default distribution there are a couple of scripts matching
+      the configuration of the test system. Before you use any of these
+      scripts you should adapt them to you own needs. For a detailed
+      description of each script, take a look in it.
+     </p>
+     <p style="text-indent: 10pt; text-align: justify;">
+      When the Firewall Registration Daemon is running it will recognize
+      when a particular machine is going online and retrieves an IP address
+      from the DHCP server. 
+      For that machine the FWREGD will run a script
+      for each privilege group the machine is in and the script will enable
+      the appropriate privileges for the machine in the Firewall. 
+      For each
+      privilege group the script will add an entry in the Firewall chain
+      for bridging/forwarding (FORWARD) that redirects all packages
+      related to the corresponding machine to the chain responsible for
+      the privileges group. In that chain the privilige will be granted to
+      the host.
+     </p>
+     <p style="text-indent: 10pt; text-align: justify;">
+      There is also a second script which removes all entries for a host
+      from the bridging/forwarding chain of the Firewall. This script is
+      called by the FWREGD when the lease time for an IP address a host is
+      using has expired and the host did not refreshed it. This behavior
+      makes sure that if a host is not available anymore, nobody can use
+      its way through the Firewall by faking an IP or MAC address.
+     </p>
+    
+    
+    <a name="sec5.2.2"></a><h4>5.2.2 Setup the Firewall Registration Daemon</h4>
+     <p style="text-indent: 10pt; text-align: justify;">
+      The Firewall Registration Daemon is a Perl program
+      <code>dhcp/fwregd.pl</code> which can be just
+      called from the command line without any arguments. It will read the
+      configuration file <code>etc/bridge-fw.conf</code> and than it will
+      go into daemon mode and return to the command line. In daemon mode
+      it will read at first the <code>dhcpd.conf</code> file and builds an
+      internal database of known hosts. The location of the
+      <code>dhcpd.conf</code> is specified in the configuration file. For
+      each known host the daemon will lookup an entry in the
+      <code>targets.map</code> file which is also specified in the
+      configuration file. The <code>targets.map</code> file contains
+      information about which privileges groups should be assigned to a
+      host. The names of the privileges groups are the same as the names
+      of their chains in the Firewall configuration. If a host does not
+      appear in the <code>targets.map</code> file a default privileges
+      group will be assigned to it. This default privileges group is specified in the
+      configuration file. 
+     </p>
+     <p style="text-indent: 10pt; text-align: justify;">
+      Now the daemon will start the lease file observer. The location of
+      the lease file can be defined in the configuration file. The
+      observer will read the lease file and parse each entry. If an entry
+      belongs to a known host (that should be always the case) then there
+      are three possible actions. First if the host status is
+      <code>offline</code> it will be set to <code>online</code> and the
+      script to enable the host in the Firewall will be executed either
+      with all privileges groups defined in the <code>targets.map</code>
+      file for that host or with the default privileges group. The lease
+      expiration time for that lease will be stored in the internal
+      database. The second possible action is if the host is already
+      <code>online</code> and the lease expiration time for the lease has
+      been extended. Then no status change on the host will be performed
+      and the new lease expiration time will be stored in the internal
+      database. The third possibility is when a host is already
+      <code>online</code> and gets a new lease, that means a new IP
+      address. Then the host status will be set to status
+      <code>offline</code> for a short time  and directly after that to
+      status <code>online</code> with the new IP address. After the lease
+      file has been processed the observer will start to observe the file
+      by checking each second if the status of the file has been changed.
+      Ususally the DHCP server will write an entry to the lease file when a
+      host refreshes its lease or requesting a new lease. If this occurs
+      the observer will extract these entries and process them in the same
+      way like described above. If the file is rewritten by the DHCP server
+      the observer will also reopen the file an process its whole content.
+     </p>
+     <p style="text-indent: 10pt; text-align: justify;">
+      Sometimes it is also necessary to change the configuration file for
+      the DHCP server <code>dhcpd.conf</code> and add or edit hosts
+      information. In that case the Firewall Registration Daemon can be
+      forced to update its host database by sending a SIGHUP signal to the
+      process. Then it will reread the <code>dhcpd.conf</code> file and
+      updates the entries in the internal host database if something has
+      changed or has been added. All hosts with status <code>online</code>
+      will be kept <code>online</code> except when relevant information, like
+      MAC address or name has been changed. The SIGHUP signal to the daemon
+      process will also cause a reread of the <code>targets.map</code>
+      file. If the privileges groups an <code>online</code> host was assigned
+      to have been changed, the host will be set to status <code>offline</code> and
+      after that to status <code>online</code> with the new set of
+      privileges.
+     </p>
+    
+    
+    <a name="sec5.2.3"></a><h4>5.2.3 Configuration File</h4>
+     <p style="text-indent: 10pt; text-align: justify;">
+      The configuration file of the Firewall Registration Daemon, the
+      Firewall initialization scripts and other helper scripts can be
+      found in <code>$BASE/etc</code> where <code>$BASE</code> is the path
+      where you have installed the distribution, for example
+      <code>/opt/fwregd</code>. The name of the configuration file is
+      <code>bridge-fw.conf</code> and the style is like:
+     </p>
+     <div style="margin-bottom: 10pt; background-color: #ffffbb; padding: 5pt; border: 1px; border-style: solid;"><pre style="margin: 0pt;">
+      # comment
+      
+      VARIABLE_NAME1="value1"
+      
+      # comment
+      VARIABLE_NAME2="value2"</pre></div>
+     <p style="text-indent: 10pt; text-align: justify;">
+      The following table will show the poossible variable names, their
+      meaning and which values can be assigned to them:
+     </p>
+     <table width="100%" cellspacing="3" cellpadding="3" border="0"><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>LOCAL_NETWORK</strong></td><td valign="top" align="left">
+        The network address of the network which should be
+        secured in dot notation with netmask.
+	<p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+	 <code>LOCAL_NETWORK="192.168.10.0/24"</code><br>
+	 or<br>
+	 <code>LOCAL_NETWORK="141.45.0.0/255.255.0.0"</code>
+	</p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>EXTERNAL_NETWORK</strong></td><td valign="top" align="left">
+        The network address of the network which should be handled as the
+        external network. <code>0.0.0.0/0</code> stands as a joker for
+        every network.
+	<p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+	 <code>LOCAL_NETWORK="0.0.0.0/0"</code>
+	</p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>ROUTER_MAC</strong></td><td valign="top" align="left">
+        The MAC address of the router the Firewall is place directly
+        before. You can set that and avoid that packages which are not
+        addressed to the router will be never sent to it. You can use
+        <code>00:00:00:00:00:00</code> here as a joker which disables this
+        feature.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+	 <code>ROTER_MAC="00:e0:7d:01:4d:e3"</code>
+	</p>
+        <strong>This has not been tested by now.</strong>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>TRUSTED_CLIENTS</strong></td><td valign="top" align="left">
+        A list of network or host addresses which specifies the trusted
+        clients in the external network. Clients listed in this list are
+        able to access local network services which are enabled for trusted
+        clients.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+	 You might have a local network
+         <code>LOCAL_NETWORK="192.168.10.0/24"</code> which is secured from all
+         other networks <code>EXTERNAL_NETWORK="0.0.0.0/0"</code> but
+         should offer a special service to all clients in the whole
+         <code>192.168.0.0/16</code> network. Than you should set the
+         following <code>TRUSTED_CLIENTS="192.168.0.0/16"</code> and create
+         a Firewall initialization script which uses this value.
+        </p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>TRUSTED_SERVERS</strong></td><td valign="top" align="left">
+        Same thing but different. If there are trusted servers in the
+        external network offering services which are usually blocked for
+        local clients you can add these servers to this variable and write
+        an appropriate Firewall initialization script.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>TRUSTED_SERVERS="192.168.0.0/16 10.0.0.1 10.0.0.2"</code>
+        </p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>CLIENT_SERVICES</strong></td><td valign="top" align="left">
+        A path relative to the base path of the distribution to a file in
+        the style of an <code>/etc/services</code> file. This file defines
+        which services should be enabled in the
+        <code>DEFAULT_CLIENT_SERVICES</code> chain in the firewall. Only
+        uncommented services will be enabled.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>CLIENT_SERVICES="etc/default_client_services.conf"</code>
+        </p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>DHCP_LEASES</strong></td><td valign="top" align="left">
+        The full path to the lease file of the DHCP server. This file is
+        the file where the DHCP server stores which leases it was
+        given to hosts in the network.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>DHCP_LEASES="/var/state/dhcp/dhcpd.leases"</code>
+        </p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>DHCP_CONFIG</strong></td><td valign="top" align="left">
+        The full path to the configuration file of the ISC DHCP server
+        which contains all hosts defined in the network.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>DHCP_CONFIG="/etc/dhcpd.conf"</code>
+        </p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>TARGETS_MAP</strong></td><td valign="top" align="left">
+        The path of the <code>targets.map</code> file 
+        relative to installation directory of the distribution. This file
+        maps the MAC addresses of the hosts each to a list of 
+        privileges groups.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>TARGETS_MAP="etc/targets.map"</code>
+        </p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>ENABLE_TARGET_SCRIPT</strong></td><td valign="top" align="left">
+        The relative path to the script which should be executed to enable
+        a privileges group for a host. Which arguments this script takes
+        you will find out in the default script.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>ENABLE_TARGET_SCRIPT="firewall/enableTarget.sh"</code>
+        </p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>DISABLE_TARGET_SCRIPT</strong></td><td valign="top" align="left">
+        The relative path to the script which should be executed to disable
+        a privileges group for a host. Which arguments this script takes
+        you will find out in the default script.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>DISABLE_TARGET_SCRIPT="firewall/disableTarget.sh"</code>
+        </p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>DEFAULT_TARGET</strong></td><td valign="top" align="left">
+        The name of the default privileges group (chain name) 
+        which should be used for
+        hosts which do not have an entry in the <code>targets.map</code>
+        file.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>DEFAULT_TARGET="DEFAULT_CLIENT"</code>
+        </p>
+       </td></tr><tr bgcolor="#ddddff"><td valign="top" align="left"><strong>LOGLEVEL</strong></td><td valign="top" align="left">
+        The verbosity of the logging in the log file (0 - errors, 1 -
+        warnings, 2 - infos, 3 - debug).
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>LOGLEVEL="2"</code>
+        </p>
+       </td></tr><tr bgcolor="#ffffff"><td valign="top" align="left"><strong>LOGFILE</strong></td><td valign="top" align="left">
+        The path to the log file.
+        <p style="margin-top: 5pt"><strong>Example:</strong></p><p style="margin-left: 20pt; margin-right: 20pt">
+         <code>LOGFILE="logs/fwregd.log</code>
+        </p>
+       </td></tr></table>
+    
+    <a name="sec5.2.4"></a><h4>5.2.4 Initialize the System on Bootup</h4>
+   
+  
+  <a name="sec6"></a><h2>6 Known Bugs</h2>
+  <a name="sec7"></a><h2>7 Things To Do</h2>
+ </div></body></html>

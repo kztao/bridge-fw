@@ -1,0 +1,85 @@
+diff -Nur linux/include/linux/netfilter_ipv4/ipt_mac.h linux-mac/include/linux/netfilter_ipv4/ipt_mac.h
+--- linux/include/linux/netfilter_ipv4/ipt_mac.h	Fri Mar 17 19:56:20 2000
++++ linux-mac/include/linux/netfilter_ipv4/ipt_mac.h	Thu Jan  3 23:37:26 2002
+@@ -3,6 +3,8 @@
+ 
+ struct ipt_mac_info {
+     unsigned char srcaddr[ETH_ALEN];
+-    int invert;
++    unsigned char dstaddr[ETH_ALEN];
++    int src_invert;
++    int dst_invert;
+ };
+ #endif /*_IPT_MAC_H*/
+diff -Nur linux/net/ipv4/netfilter/ipt_mac.c linux-mac/net/ipv4/netfilter/ipt_mac.c
+--- linux/net/ipv4/netfilter/ipt_mac.c	Sat Oct  6 17:50:28 2001
++++ linux-mac/net/ipv4/netfilter/ipt_mac.c	Thu Jan  3 23:24:44 2002
+@@ -6,6 +6,8 @@
+ #include <linux/netfilter_ipv4/ipt_mac.h>
+ #include <linux/netfilter_ipv4/ip_tables.h>
+ 
++static const char joker[ETH_ALEN] = {0, 0, 0, 0, 0, 0};
++
+ static int
+ match(const struct sk_buff *skb,
+       const struct net_device *in,
+@@ -16,14 +18,53 @@
+       u_int16_t datalen,
+       int *hotdrop)
+ {
+-    const struct ipt_mac_info *info = matchinfo;
++    const struct ipt_mac_info *info = (struct ipt_mac_info *) matchinfo;
+ 
++    /* does the source address matching the rule */
++    int src_check = 0;
++    /* does the destination address matching the rule */
++    int dst_check = 0;
++    
+     /* Is mac pointer valid? */
+-    return (skb->mac.raw >= skb->head
+-	    && (skb->mac.raw + ETH_HLEN) <= skb->data
+-	    /* If so, compare... */
+-	    && ((memcmp(skb->mac.ethernet->h_source, info->srcaddr, ETH_ALEN)
+-		== 0) ^ info->invert));
++    if(skb->mac.raw >= skb->head
++                && (skb->mac.raw + ETH_HLEN) <= skb->data)
++    {
++        /* check source address first */
++        /* check if srcaddr is a joker address */
++        if(memcmp(info->srcaddr, joker, ETH_ALEN) == 0)
++        {
++            src_check = 1;
++        }
++	/* If srcaddr is not a joker, compare with ethernet header... */
++        else if((memcmp(skb->mac.ethernet->h_source, 
++                        info->srcaddr, ETH_ALEN) == 0) ^ info->src_invert)
++        {
++            src_check = 1;
++        }
++        else
++        {
++            src_check = 0;
++        }
++        
++        /* check destination address now */
++        /* check if dstaddr is a joker address */
++        if(memcmp(info->dstaddr, joker, ETH_ALEN) == 0)
++        {
++            dst_check = 1;
++        }
++	/* If dstaddr is not a joker, compare with ethernet header... */
++        else if((memcmp(skb->mac.ethernet->h_dest, 
++                        info->dstaddr, ETH_ALEN) == 0) ^ info->dst_invert)
++        {
++            dst_check = 1;
++        }
++        else
++        {
++            dst_check = 0;
++        }
++    }
++
++    return(src_check && dst_check);
+ }
+ 
+ static int

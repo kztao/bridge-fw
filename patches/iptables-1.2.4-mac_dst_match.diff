@@ -1,0 +1,188 @@
+diff -Nur iptables-1.2.4/Makefile iptables-1.2.4-mac/Makefile
+--- iptables-1.2.4/Makefile	Sun Oct 21 18:07:21 2001
++++ iptables-1.2.4-mac/Makefile	Wed Jan  2 19:29:14 2002
+@@ -13,7 +13,7 @@
+ ifndef KERNEL_DIR
+ KERNEL_DIR=/usr/src/linux
+ endif
+-NETFILTER_VERSION:=1.2.4
++NETFILTER_VERSION:=1.2.4-mac
+ OLD_NETFILTER_VERSION:=1.2.3
+ 
+ # Waiting for inclusions in the kernel tree.
+diff -Nur iptables-1.2.4/extensions/libipt_mac.c iptables-1.2.4-mac/extensions/libipt_mac.c
+--- iptables-1.2.4/extensions/libipt_mac.c	Mon Aug  6 10:53:41 2001
++++ iptables-1.2.4-mac/extensions/libipt_mac.c	Wed Jan  2 17:27:00 2002
+@@ -12,6 +12,12 @@
+ #include <iptables.h>
+ #include <linux/netfilter_ipv4/ipt_mac.h>
+ 
++#define SRCADDR 1
++#define DSTADDR 2
++
++/* a joker address */
++static const char joker[ETH_ALEN] = {0, 0, 0, 0, 0, 0};
++
+ /* Function which prints out usage message. */
+ static void
+ help(void)
+@@ -19,12 +25,15 @@
+ 	printf(
+ "MAC v%s options:\n"
+ " --mac-source [!] XX:XX:XX:XX:XX:XX\n"
+-"				Match source MAC address\n"
++"                               Match source MAC address\n"
++" --mac-destination [!] XX:XX:XX:XX:XX:XX\n"
++"                               Match destination MAC address\n"
+ "\n", NETFILTER_VERSION);
+ }
+ 
+ static struct option opts[] = {
+-	{ "mac-source", 1, 0, '1' },
++	{ "mac-source", 1, 0, 's' },
++	{ "mac-destination", 1, 0, 'd' },
+ 	{0}
+ };
+ 
+@@ -37,10 +46,12 @@
+ }
+ 
+ static void
+-parse_mac(const char *mac, struct ipt_mac_info *info)
++parse_mac(const char *mac, struct ipt_mac_info *info, int type)
+ {
+ 	unsigned int i = 0;
+-
++        /* temporary var to take up the address */
++        char addr[ETH_ALEN];
++        
+ 	if (strlen(mac) != ETH_ALEN*3-1)
+ 		exit_error(PARAMETER_PROBLEM, "Bad mac address `%s'", mac);
+ 
+@@ -53,11 +64,17 @@
+ 		if (end == mac + i*3 + 2
+ 		    && number >= 0
+ 		    && number <= 255)
+-			info->srcaddr[i] = number;
++                        addr[i] = number;
+ 		else
+ 			exit_error(PARAMETER_PROBLEM,
+ 				   "Bad mac address `%s'", mac);
+ 	}
++
++        /* copy the address to the info structure */
++	if(type == SRCADDR)
++            memcpy(info->srcaddr, addr, ETH_ALEN);
++        else if(type == DSTADDR)
++            memcpy(info->dstaddr, addr, ETH_ALEN);
+ }
+ 
+ /* Function which parses command options; returns true if it
+@@ -71,19 +88,37 @@
+ 	struct ipt_mac_info *macinfo = (struct ipt_mac_info *)(*match)->data;
+ 
+ 	switch (c) {
+-	case '1':
++	case 's':
+ 		if (check_inverse(optarg, &invert))
+ 			optind++;
+-		parse_mac(argv[optind-1], macinfo);
++		parse_mac(argv[optind-1], macinfo, SRCADDR);
+ 		if (invert)
+-			macinfo->invert = 1;
+-		*flags = 1;
++			macinfo->src_invert = 1;
++		*flags |= 1;
+ 		break;
+-
++        
++        case 'd':
++		if (check_inverse(optarg, &invert))
++			optind++;
++		parse_mac(argv[optind-1], macinfo, DSTADDR);
++		if (invert)
++			macinfo->dst_invert = 1;
++		*flags |= 2;
++		break;
++                
+ 	default:
+ 		return 0;
+ 	}
+-
++        
++        /* set not initialized MACs to 00:00:00:00:00:00 which is a joker
++         * and matches any MAC address */
++        
++        if((*flags & 2) != 2)
++            memcpy(macinfo->dstaddr, joker, ETH_ALEN);
++        
++        if((*flags & 1) != 1)
++            memcpy(macinfo->srcaddr, joker, ETH_ALEN);
++        
+ 	return 1;
+ }
+ 
+@@ -102,7 +137,8 @@
+ {
+ 	if (!flags)
+ 		exit_error(PARAMETER_PROBLEM,
+-			   "You must specify `--mac-source'");
++			   "You must specify `--mac-source' or "
++                           "`--mac-destination'");
+ }
+ 
+ /* Prints out the matchinfo. */
+@@ -111,17 +147,23 @@
+       const struct ipt_entry_match *match,
+       int numeric)
+ {
+-	printf("MAC ");
++	printf("MAC src: ");
+ 	print_mac(((struct ipt_mac_info *)match->data)->srcaddr,
+-		  ((struct ipt_mac_info *)match->data)->invert);
++		  ((struct ipt_mac_info *)match->data)->src_invert);
++        printf("dst: ");
++	print_mac(((struct ipt_mac_info *)match->data)->dstaddr,
++		  ((struct ipt_mac_info *)match->data)->dst_invert);
+ }
+ 
+ /* Saves the union ipt_matchinfo in parsable form to stdout. */
+ static void save(const struct ipt_ip *ip, const struct ipt_entry_match *match)
+ {
+-	printf("--mac ");
++	printf("--mac-source ");
+ 	print_mac(((struct ipt_mac_info *)match->data)->srcaddr,
+-		  ((struct ipt_mac_info *)match->data)->invert);
++		  ((struct ipt_mac_info *)match->data)->src_invert);
++	printf("--mac-destination ");
++	print_mac(((struct ipt_mac_info *)match->data)->dstaddr,
++		  ((struct ipt_mac_info *)match->data)->dst_invert);
+ }
+ 
+ static
+diff -Nur iptables-1.2.4/iptables.8 iptables-1.2.4-mac/iptables.8 
+--- iptables-1.2.4/iptables.8   Wed Sep 12 23:56:29 2001
++++ iptables-1.2.4-mac/iptables.8       Thu Jan  3 23:19:53 2002
+@@ -410,15 +410,18 @@
+  iptables -p icmp -h
+ .br
+ .SS mac
+-.TP
+-.BR "--mac-source " "[!] \fIaddress\fP"
+-Match source MAC address.  It must be of the form XX:XX:XX:XX:XX:XX.
+-Note that this only makes sense for packets entering the
++Note that these options only make sense for packets entering the
+ .BR PREROUTING ,
+ .B FORWARD
+ or
+ .B INPUT
+ chains for packets coming from an ethernet device.
++.TP
++.BR "--mac-source " "[!] \fIaddress\fP"
++Match source MAC address.  It must be of the form XX:XX:XX:XX:XX:XX.
++.TP
++.BR "--mac-destination " "[!] \fIaddress\fP"
++Match destination MAC address.  It must be of the form XX:XX:XX:XX:XX:XX.
+ .SS limit
+ This module matches at a limited rate using a token bucket filter: it
+ can be used in combination with the
